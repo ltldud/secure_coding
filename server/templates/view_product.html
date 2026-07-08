@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ product.title }}{% endblock %}
+{% block content %}
+<div class="card">
+  <span class="badge {{ product.status }}">
+    {{ {'active': '판매중', 'sold': '판매완료', 'blocked': '차단됨'}.get(product.status, product.status) }}
+  </span>
+  <h1>{{ product.title }}</h1>
+  <p class="price">{{ "{:,}".format(product.price) }}원</p>
+  <p style="white-space: pre-wrap;">{{ product.description }}</p>
+  <p class="muted">
+    판매자:
+    <a href="{{ url_for('profile.view_user', username=seller.username) }}">{{ seller.username }}</a>
+  </p>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if seller.id == current_user.id %}
+      <a class="btn secondary" href="{{ url_for('products.edit_product', product_id=product.id) }}">수정</a>
+      <form method="post" action="{{ url_for('products.delete_product', product_id=product.id) }}" onsubmit="return confirm('삭제하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn danger" type="submit">삭제</button>
+      </form>
+    {% else %}
+      {% if product.status == 'active' %}
+      <form method="post" action="{{ url_for('transfers.purchase', product_id=product.id) }}" onsubmit="return confirm('{{ '{:,}'.format(product.price) }}원에 구매하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit">구매하기</button>
+      </form>
+      {% endif %}
+      <a class="btn secondary" href="{{ url_for('chat.direct_chat', username=seller.username) }}">판매자와 채팅</a>
+      <a class="btn secondary" href="{{ url_for('reports.report', target_type='product', target_id=product.id) }}">상품 신고</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

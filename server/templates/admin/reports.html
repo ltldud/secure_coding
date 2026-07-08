@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}신고 관리{% endblock %}
+{% block content %}
+<h2>신고 관리</h2>
+<div class="admin-nav">
+  <a href="{{ url_for('admin.dashboard') }}">대시보드</a>
+  <a href="{{ url_for('admin.users') }}">회원 관리</a>
+  <a href="{{ url_for('admin.products') }}">상품 관리</a>
+  <a href="{{ url_for('admin.reports') }}">신고 관리</a>
+  <a href="{{ url_for('admin.transactions') }}">거래 내역</a>
+</div>
+
+<table>
+  <tr><th>일시</th><th>대상</th><th>사유</th><th>상태</th><th></th></tr>
+  {% for r in reports %}
+  <tr>
+    <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td>{{ r.target_type }} / {{ r.target_id }}</td>
+    <td>{{ r.reason }}</td>
+    <td>{{ r.status }}</td>
+    <td>
+      {% if r.status == 'pending' %}
+      <form method="post" action="{{ url_for('admin.dismiss_report', report_id=r.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn small secondary" type="submit">기각</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}송금{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:0 auto;">
+  <h2>송금하기</h2>
+  <p class="muted">내 잔액: {{ "{:,}".format(balance) }}원</p>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <label for="receiver_username">받는 사람 아이디</label>
+    {{ form.receiver_username(id="receiver_username") }}
+    {% for e in form.receiver_username.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+
+    <label for="amount">금액(원)</label>
+    {{ form.amount(id="amount", min=1) }}
+    {% for e in form.amount.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+
+    <button class="btn" type="submit">송금</button>
+  </form>
+  <p class="muted" style="margin-top:14px;"><a href="{{ url_for('transfers.history') }}">거래 내역 보기</a></p>
+</div>
+{% endblock %}

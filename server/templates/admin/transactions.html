@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}거래 내역{% endblock %}
+{% block content %}
+<h2>전체 거래 내역</h2>
+<div class="admin-nav">
+  <a href="{{ url_for('admin.dashboard') }}">대시보드</a>
+  <a href="{{ url_for('admin.users') }}">회원 관리</a>
+  <a href="{{ url_for('admin.products') }}">상품 관리</a>
+  <a href="{{ url_for('admin.reports') }}">신고 관리</a>
+  <a href="{{ url_for('admin.transactions') }}">거래 내역</a>
+</div>
+
+<table>
+  <tr><th>일시</th><th>보낸사람</th><th>받은사람</th><th>금액</th><th>구분</th></tr>
+  {% for tx in txs %}
+  <tr>
+    <td>{{ tx.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td>{{ usernames.get(tx.sender_id, tx.sender_id) }}</td>
+    <td>{{ usernames.get(tx.receiver_id, tx.receiver_id) }}</td>
+    <td>{{ "{:,}".format(tx.amount) }}원</td>
+    <td>{{ tx.kind }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

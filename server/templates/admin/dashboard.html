@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}관리자 대시보드{% endblock %}
+{% block content %}
+<h2>관리자 대시보드</h2>
+<div class="admin-nav">
+  <a href="{{ url_for('admin.dashboard') }}">대시보드</a>
+  <a href="{{ url_for('admin.users') }}">회원 관리</a>
+  <a href="{{ url_for('admin.products') }}">상품 관리</a>
+  <a href="{{ url_for('admin.reports') }}">신고 관리</a>
+  <a href="{{ url_for('admin.transactions') }}">거래 내역</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-box"><div class="num">{{ stats.user_count }}</div><div class="label">전체 회원</div></div>
+  <div class="stat-box"><div class="num">{{ stats.product_count }}</div><div class="label">전체 상품</div></div>
+  <div class="stat-box"><div class="num">{{ stats.pending_reports }}</div><div class="label">대기중 신고</div></div>
+  <div class="stat-box"><div class="num">{{ stats.suspended_users }}</div><div class="label">정지된 회원</div></div>
+  <div class="stat-box"><div class="num">{{ stats.blocked_products }}</div><div class="label">차단된 상품</div></div>
+</div>
+
+<div class="card">
+  <h3>최근 신고</h3>
+  {% if recent_reports %}
+  <table>
+    <tr><th>일시</th><th>대상</th><th>사유</th><th>상태</th></tr>
+    {% for r in recent_reports %}
+    <tr>
+      <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ r.target_type }} / {{ r.target_id }}</td>
+      <td>{{ r.reason }}</td>
+      <td>{{ r.status }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">신고 내역이 없습니다.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+server/market.db
+server/.env
+.env
+*.pdf

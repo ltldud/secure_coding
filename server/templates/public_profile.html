@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ profile_user.username }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ profile_user.username }}</h2>
+  <p>{{ profile_user.bio or "소개글이 없습니다." }}</p>
+  {% if profile_user.id != current_user.id %}
+  <div style="display:flex; gap:8px;">
+    <a class="btn secondary" href="{{ url_for('chat.direct_chat', username=profile_user.username) }}">채팅하기</a>
+    <a class="btn secondary" href="{{ url_for('reports.report', target_type='user', target_id=profile_user.id) }}">신고하기</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}거래 내역{% endblock %}
+{% block content %}
+<h2>거래 내역</h2>
+{% if txs %}
+<table>
+  <tr><th>일시</th><th>구분</th><th>상대방</th><th>금액</th></tr>
+  {% for tx in txs %}
+  <tr>
+    <td>{{ tx.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td>{{ '구매' if tx.kind == 'purchase' else '송금' }}{{ ' (보냄)' if tx.sender_id == me.id else ' (받음)' }}</td>
+    <td>{{ usernames.get(tx.receiver_id) if tx.sender_id == me.id else usernames.get(tx.sender_id) }}</td>
+    <td style="color: {{ 'var(--danger)' if tx.sender_id == me.id else 'var(--success)' }};">
+      {{ '-' if tx.sender_id == me.id else '+' }}{{ "{:,}".format(tx.amount) }}원
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">거래 내역이 없습니다.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}마이페이지{% endblock %}
+{% block content %}
+<h2>마이페이지</h2>
+
+<div class="card">
+  <p><strong>아이디:</strong> {{ current_user.username }}</p>
+  <p><strong>잔액:</strong> {{ "{:,}".format(current_user.balance) }}원</p>
+</div>
+
+<div class="card">
+  <h3>소개글 수정</h3>
+  <form method="post" action="{{ url_for('profile.update_bio') }}">
+    {{ form.hidden_tag() }}
+    {{ form.bio(maxlength=500, placeholder="자기소개를 입력하세요") }}
+    {% for e in form.bio.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    <button class="btn" type="submit">저장</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>비밀번호 변경</h3>
+  <form method="post" action="{{ url_for('profile.update_password') }}">
+    {{ pw_form.hidden_tag() }}
+    <label for="current_password">현재 비밀번호</label>
+    {{ pw_form.current_password(id="current_password") }}
+
+    <label for="new_password">새 비밀번호</label>
+    {{ pw_form.new_password(id="new_password") }}
+
+    <label for="confirm">새 비밀번호 확인</label>
+    {{ pw_form.confirm(id="confirm") }}
+
+    <button class="btn" type="submit">비밀번호 변경</button>
+  </form>
+</div>
+{% endblock %}
