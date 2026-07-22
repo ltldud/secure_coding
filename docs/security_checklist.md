@@ -19,7 +19,7 @@
 
 | 체크리스트 항목 | 상태 | 구현 위치 |
 |---|---|---|
-| 폼 입력 검증 (제목/설명/가격) | ✅ | `forms.py` `ProductForm` (길이 제한, 가격 범위 0~10억) |
+| 폼 입력 검증 (제목/설명/가격) | ✅ | `forms.py` `ProductForm` (길이 제한, 가격 범위 1~10억) |
 | XSS 방어 (상품 설명 등) | ✅ | Jinja2 autoescape (`view_product.html` 등) |
 | 인증된 사용자만 등록 | ✅ | `@login_required` on `/product/new` |
 | 소유자 확인 (수정/삭제) | ✅ | `blueprints/products.py` `edit_product`/`delete_product`에서 `seller_id` 비교, 불일치 시 403 |

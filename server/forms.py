@@ -52,7 +52,7 @@ class PasswordChangeForm(FlaskForm):
 class ProductForm(FlaskForm):
     title = StringField("상품명", validators=[DataRequired(), Length(min=1, max=100)])
     description = TextAreaField("상품 설명", validators=[DataRequired(), Length(min=1, max=2000)])
-    price = IntegerField("가격", validators=[DataRequired(), NumberRange(min=0, max=1_000_000_000)])
+    price = IntegerField("가격", validators=[DataRequired(), NumberRange(min=1, max=1_000_000_000)])
 
 
 class ReportForm(FlaskForm):
