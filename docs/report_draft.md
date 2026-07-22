@@ -189,31 +189,134 @@ server/
 | Flask-Limiter | 엔드포인트별 rate limiting |
 | bcrypt | 비밀번호 해시(salt 자동 포함) |
 
-### 4.2 핵심 구현 스니펫
+### 4.2 기능별 구현 상세
 
-*(작성 가이드: 각 스니펫 아래에 "왜 이렇게 짰는지" 한두 줄을 본인 말로 붙이세요. 파일 경로:줄번호 형태로 출처를 밝혀두면 채점자가 바로 찾아볼 수 있습니다.)*
+*(작성 가이드: 슬라이드 29페이지("코드 확인!") 포맷 — 3.1~3.7에서 분류한 기능 하나하나를 실제 코드와 함께 보여줍니다. 각 코드 아래 "왜 이렇게 짰는지" 한두 줄을 본인 말로 붙이세요.)*
 
-**비밀번호 해시 저장** (`server/security.py`)
+**공통 보안 설정** — 특정 기능이 아니라 앱 전체에 걸리는 설정 (`server/extensions.py`, `server/app.py`)
 ```python
-def hash_password(raw_password: str) -> str:
-    return bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-def verify_password(raw_password: str, password_hash: str) -> bool:
-    try:
-        return bcrypt.checkpw(raw_password.encode("utf-8"), password_hash.encode("utf-8"))
-    except ValueError:
-        return False
-```
-- [ ] 왜 이렇게 했는지:
-
-**CSRF 보호 전역 적용** (`server/extensions.py`)
-```python
+# extensions.py
 csrf = CSRFProtect()
-# app.py에서 csrf.init_app(app)으로 전체 앱에 적용
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
+
+# app.py — create_app() 안에서 전체 앱에 적용
+csrf.init_app(app)
+limiter.init_app(app)
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self' ws: wss:;"
+    )
+    return response
 ```
 - [ ] 왜 이렇게 했는지:
 
-**상품 수정/삭제 소유자 검증 (IDOR 방지)** (`server/blueprints/products.py`)
+#### 유저 관리
+
+**회원가입 기능** (`server/blueprints/auth.py: register`)
+```python
+@auth_bp.route("/register", methods=["GET", "POST"])
+@limiter.limit("10 per hour")
+def register():
+    form = RegisterForm()
+    if form.validate_on_submit():
+        existing = User.query.filter_by(username=form.username.data).first()
+        if existing is not None:
+            flash("이미 존재하는 사용자명입니다.", "danger")
+            return render_template("register.html", form=form)
+
+        user = User(username=form.username.data, balance=Config.STARTING_BALANCE)
+        user.set_password(form.password.data)   # bcrypt 해시 저장 (security.py)
+        db.session.add(user)
+        db.session.commit()
+        return redirect(url_for("auth.login"))
+    return render_template("register.html", form=form)
+```
+- [ ] 왜 이렇게 했는지:
+
+**로그인 기능** (`server/blueprints/auth.py: login`)
+```python
+@auth_bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("15 per 5 minutes")
+def login():
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(username=form.username.data).first()
+        generic_error = "아이디 또는 비밀번호가 올바르지 않습니다."  # 아이디 존재여부 유추 방지
+
+        if user is None:
+            flash(generic_error, "danger")
+        elif user.is_locked():
+            flash("계정이 잠겨 있습니다. 잠시 후 다시 시도하세요.", "danger")
+        elif user.status == "suspended":
+            flash("휴면(정지) 처리된 계정입니다. 관리자에게 문의하세요.", "danger")
+        elif not user.check_password(form.password.data):
+            user.register_failed_login(Config.LOGIN_FAIL_LIMIT, Config.LOGIN_LOCK_MINUTES)
+            db.session.commit()
+            flash(generic_error, "danger")
+        else:
+            user.reset_failed_login()
+            db.session.commit()
+            login_user(user)
+            return redirect(url_for("products.dashboard"))
+    return render_template("login.html", form=form)
+```
+- [ ] 왜 이렇게 했는지:
+
+**사용자 조회 기능 (공개 프로필)** (`server/blueprints/profile.py: view_user`)
+```python
+@profile_bp.route("/user/<username>")
+@login_required
+def view_user(username):
+    user = User.query.filter_by(username=username).first_or_404()
+    return render_template("public_profile.html", profile_user=user)
+```
+- [ ] 왜 이렇게 했는지:
+
+**마이페이지 기능 (소개글/비밀번호 업데이트)** (`server/blueprints/profile.py`)
+```python
+@profile_bp.route("/profile/password", methods=["POST"])
+@login_required
+@limiter.limit("10 per hour")
+def update_password():
+    pw_form = PasswordChangeForm()
+    if pw_form.validate_on_submit():
+        if not current_user.check_password(pw_form.current_password.data):
+            flash("현재 비밀번호가 올바르지 않습니다.", "danger")
+            return redirect(url_for("profile.mypage"))
+        current_user.set_password(pw_form.new_password.data)
+        db.session.commit()
+    return redirect(url_for("profile.mypage"))
+```
+- [ ] 왜 이렇게 했는지:
+
+#### 상품 관리
+
+**상품 등록 기능** (`server/blueprints/products.py: new_product`)
+```python
+@products_bp.route("/product/new", methods=["GET", "POST"])
+@login_required
+def new_product():
+    form = ProductForm()
+    if form.validate_on_submit():
+        product = Product(
+            title=form.title.data.strip(),
+            description=form.description.data.strip(),
+            price=form.price.data,
+            seller_id=current_user.id,
+        )
+        db.session.add(product)
+        db.session.commit()
+        return redirect(url_for("products.view_product", product_id=product.id))
+    return render_template("new_product.html", form=form)
+```
+- [ ] 왜 이렇게 했는지:
+
+**등록된 상품 관리 기능 (수정/삭제, 소유자만)** (`server/blueprints/products.py: edit_product / delete_product`)
 ```python
 @products_bp.route("/product/<product_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -221,11 +324,134 @@ def edit_product(product_id):
     product = Product.query.get_or_404(product_id)
     if product.seller_id != current_user.id:
         abort(403)
-    ...
+    form = ProductForm(obj=product)
+    if form.validate_on_submit():
+        product.title = form.title.data.strip()
+        product.description = form.description.data.strip()
+        product.price = form.price.data
+        db.session.commit()
+        return redirect(url_for("products.view_product", product_id=product.id))
+    return render_template("edit_product.html", form=form, product=product)
+
+
+@products_bp.route("/product/<product_id>/delete", methods=["POST"])
+@login_required
+def delete_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    if product.seller_id != current_user.id and not current_user.is_admin():
+        abort(403)
+    db.session.delete(product)
+    db.session.commit()
+    return redirect(url_for("products.my_products"))
 ```
 - [ ] 왜 이렇게 했는지:
 
-**신고 임계치 자동 조치** (`server/blueprints/reports.py`)
+**상품 조회 및 상세 페이지 기능** (`server/blueprints/products.py: dashboard / view_product`)
+```python
+@products_bp.route("/dashboard")
+@login_required
+def dashboard():
+    query = Product.query.filter(Product.status != "blocked")
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = query.order_by(Product.created_at.desc()).paginate(
+        page=page, per_page=PAGE_SIZE, error_out=False
+    )
+    return render_template("dashboard.html", products=pagination.items, pagination=pagination)
+
+
+@products_bp.route("/product/<product_id>")
+@login_required
+def view_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    if product.status == "blocked" and product.seller_id != current_user.id and not current_user.is_admin():
+        abort(404)
+    return render_template("view_product.html", product=product, seller=product.seller)
+```
+- [ ] 왜 이렇게 했는지:
+
+#### 유저 소통 기능
+
+**실시간 전체 채팅 기능** (`server/blueprints/chat.py: handle_connect / handle_send_message`)
+```python
+@socketio.on("connect")
+def handle_connect():
+    if not current_user.is_authenticated:
+        disconnect()
+        return False
+
+@socketio.on("send_message")
+def handle_send_message(data):
+    if not current_user.is_authenticated or current_user.status == "suspended":
+        disconnect()
+        return
+
+    content = str(data.get("content", "")).strip()
+    if not content or len(content) > MAX_MESSAGE_LEN:
+        return
+    if _rate_limited(current_user.id):
+        emit("system_notice", {"message": "너무 빠르게 메시지를 보내고 있습니다."})
+        return
+
+    msg = Message(room=data.get("room", ""), sender_id=current_user.id, content=content)
+    db.session.add(msg)
+    db.session.commit()
+    emit("receive_message", {"sender": current_user.username, "content": content}, room=msg.room)
+```
+- [ ] 왜 이렇게 했는지:
+
+**1대1 채팅 기능** (`server/blueprints/chat.py: direct_chat / handle_join`)
+```python
+@chat_bp.route("/chat/dm/<username>")
+@login_required
+def direct_chat(username):
+    other = User.query.filter_by(username=username).first_or_404()
+    if other.id == current_user.id:
+        abort(400)
+    convo = _get_or_create_conversation(current_user.id, other.id)
+    return render_template("chat_dm.html", other=other, room=convo.id)
+
+@socketio.on("join")
+def handle_join(data):
+    room = str(data.get("room", ""))[:80]
+    if room == GLOBAL_ROOM:
+        join_room(GLOBAL_ROOM)
+        return
+    convo = db.session.get(Conversation, room)
+    if convo is None or current_user.id not in (convo.user_a_id, convo.user_b_id):
+        disconnect()   # 대화 참여자가 아니면 연결 차단
+        return
+    join_room(room)
+```
+- [ ] 왜 이렇게 했는지:
+
+#### 악성 유저 필터링
+
+**불량 유저/상품 신고 기능** (`server/blueprints/reports.py: report`)
+```python
+@reports_bp.route("/report", methods=["GET", "POST"])
+@login_required
+@limiter.limit("20 per hour")
+def report():
+    form = ReportForm(target_type=request.values.get("target_type", ""), target_id=request.values.get("target_id", ""))
+    if form.validate_on_submit():
+        target = _resolve_target(form.target_type.data, form.target_id.data)
+        if target is None:
+            abort(404)
+        rpt = Report(reporter_id=current_user.id, target_type=form.target_type.data,
+                     target_id=form.target_id.data, reason=form.reason.data.strip())
+        db.session.add(rpt)
+        try:
+            db.session.commit()
+        except IntegrityError:          # UNIQUE 제약 위반 = 중복 신고
+            db.session.rollback()
+            flash("이미 신고한 대상입니다.", "warning")
+            return redirect(url_for("products.dashboard"))
+        _apply_threshold(form.target_type.data, form.target_id.data)
+    return render_template("report.html", form=form)
+```
+- [ ] 왜 이렇게 했는지:
+
+**불량 상품 차단 / 불량 유저 휴면 기능 (임계치 자동 조치)** (`server/blueprints/reports.py: _apply_threshold`)
 ```python
 def _apply_threshold(target_type, target_id):
     count = Report.query.filter_by(target_type=target_type, target_id=target_id).count()
@@ -236,26 +462,115 @@ def _apply_threshold(target_type, target_id):
             product.status = "blocked"
             db.session.add(AuditLog(actor_id=None, action="auto_block_product", target=target_id))
         db.session.commit()
-    # target_type == "user" 분기도 동일한 방식으로 처리
+    elif target_type == "user":
+        user = db.session.get(User, target_id)
+        user.report_count = count
+        if count >= Config.REPORT_THRESHOLD_USER:
+            user.status = "suspended"
+            db.session.add(AuditLog(actor_id=None, action="auto_suspend_user", target=target_id))
+        db.session.commit()
 ```
 - [ ] 왜 이렇게 했는지:
 
-**송금 검증 및 원자적 처리** (`server/blueprints/transfers.py`)
+#### 송금 (직접 설계)
+
+**유저 간 송금 기능** (`server/blueprints/transfers.py: transfer`)
 ```python
-if receiver is None:
-    flash("받는 사람을 찾을 수 없습니다.", "danger")
-elif receiver.id == current_user.id:
-    flash("자기 자신에게는 송금할 수 없습니다.", "danger")
-elif receiver.status == "suspended":
-    flash("정지된 사용자에게는 송금할 수 없습니다.", "danger")
-elif current_user.balance < amount:
-    flash("잔액이 부족합니다.", "danger")
-else:
-    _execute_transfer(current_user, receiver, amount, kind="transfer")
+@transfers_bp.route("/transfer", methods=["GET", "POST"])
+@login_required
+@limiter.limit("30 per hour")
+def transfer():
+    form = TransferForm()
+    if form.validate_on_submit():
+        receiver = User.query.filter_by(username=form.receiver_username.data.strip()).first()
+        amount = form.amount.data
+        if receiver is None:
+            flash("받는 사람을 찾을 수 없습니다.", "danger")
+        elif receiver.id == current_user.id:
+            flash("자기 자신에게는 송금할 수 없습니다.", "danger")
+        elif receiver.status == "suspended":
+            flash("정지된 사용자에게는 송금할 수 없습니다.", "danger")
+        elif current_user.balance < amount:
+            flash("잔액이 부족합니다.", "danger")
+        else:
+            _execute_transfer(current_user, receiver, amount, kind="transfer")
+            return redirect(url_for("transfers.history"))
+    return render_template("transfer.html", form=form, balance=current_user.balance)
 ```
 - [ ] 왜 이렇게 했는지:
 
-**관리자 권한 검증 데코레이터** (`server/blueprints/admin.py`)
+**상품 구매(송금 연동) 기능** (`server/blueprints/transfers.py: purchase / _execute_transfer`)
+```python
+@transfers_bp.route("/product/<product_id>/purchase", methods=["POST"])
+@login_required
+def purchase(product_id):
+    product = Product.query.get_or_404(product_id)
+    if product.status != "active":
+        flash("판매 중인 상품이 아닙니다.", "danger")
+    elif product.seller_id == current_user.id:
+        flash("자신의 상품은 구매할 수 없습니다.", "danger")
+    elif current_user.balance < product.price:
+        flash("잔액이 부족합니다.", "danger")
+    else:
+        _execute_transfer(current_user, product.seller, product.price, kind="purchase", product=product)
+        product.status = "sold"
+        db.session.commit()
+    return redirect(url_for("products.view_product", product_id=product_id))
+
+def _execute_transfer(sender, receiver, amount, kind="transfer", product=None):
+    sender.balance -= amount
+    receiver.balance += amount
+    db.session.add(Transaction(sender_id=sender.id, receiver_id=receiver.id, amount=amount,
+                                kind=kind, product_id=product.id if product else None))
+    db.session.commit()   # 잔액 변경 + 거래기록이 하나의 커밋으로 원자적 처리
+```
+- [ ] 왜 이렇게 했는지:
+
+**거래 내역 조회 기능** (`server/blueprints/transfers.py: history`)
+```python
+@transfers_bp.route("/transactions")
+@login_required
+def history():
+    txs = Transaction.query.filter(
+        db.or_(Transaction.sender_id == current_user.id, Transaction.receiver_id == current_user.id)
+    ).order_by(Transaction.created_at.desc()).all()
+    return render_template("transactions.html", txs=txs, me=current_user)
+```
+- [ ] 왜 이렇게 했는지:
+
+#### 검색 (직접 설계)
+
+**상품명/설명 검색 기능** (`server/blueprints/products.py: dashboard`)
+```python
+q = (request.args.get("q") or "").strip()[:100]
+if q:
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = "%" + escaped + "%"
+    query = query.filter(
+        db.or_(Product.title.ilike(like, escape="\\"), Product.description.ilike(like, escape="\\"))
+    )
+```
+- [ ] 왜 이렇게 했는지: (`%`, `_`는 SQL LIKE의 와일드카드 문자라서 그대로 두면 검색어로 와일드카드를 주입할 수 있음 — 직접 이스케이프 처리)
+
+#### 관리자 (직접 설계)
+
+**관리자 계정 생성 (하드코딩 금지)** (`server/scripts/seed_admin.py`)
+```python
+username = os.environ.get("ADMIN_USERNAME")
+password = os.environ.get("ADMIN_PASSWORD")
+user = User.query.filter_by(username=username).first()
+if user is None:
+    user = User(username=username, balance=Config.STARTING_BALANCE, role="admin")
+    user.set_password(password)
+    db.session.add(user)
+else:
+    user.role = "admin"
+    user.set_password(password)
+db.session.commit()
+```
+- [ ] 왜 이렇게 했는지:
+
+**회원/상품/신고/거래 통합 관리 기능** (`server/blueprints/admin.py`)
 ```python
 def admin_required(view):
     @wraps(view)
@@ -265,6 +580,18 @@ def admin_required(view):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
+
+@admin_bp.route("/users/<user_id>/suspend", methods=["POST"])
+@admin_required
+def suspend_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash("자기 자신은 정지할 수 없습니다.", "danger")
+        return redirect(url_for("admin.users"))
+    user.status = "suspended"
+    db.session.add(AuditLog(actor_id=current_user.id, action="admin_suspend_user", target=user.id))
+    db.session.commit()
+    return redirect(url_for("admin.users"))
 ```
 - [ ] 왜 이렇게 했는지:
 
