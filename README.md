@@ -3,8 +3,6 @@
 
 WhiteHat School Secure Coding 과제용 프로젝트입니다. Flask 기반 단일 서버 앱으로 회원가입/로그인, 상품 등록·조회·검색, 전체/1:1 채팅, 신고 및 자동 제재, 유저 간 송금(상품 구매 포함), 관리자 기능을 제공합니다.
 
-개발 과정 및 보안 점검 내역 보고서는 `docs/` 폴더를 참고하세요.
-- [`docs/security_checklist.md`](docs/security_checklist.md) - 보안 체크리스트 점검 결과
 
 ## 기술 스택
 
