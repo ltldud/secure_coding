@@ -176,7 +176,9 @@ server/
 
 ## 4. 시스템 구현
 
-*(작성 가이드: 블루프린트 단위로 나눈 이유, 사용한 라이브러리와 각각의 역할을 본인 말로. 아래는 참고용 표)*
+*(작성 가이드: GitHub 저장소 링크로 전체 코드는 이미 확인 가능하므로, 여기서는 전체 코드를 다시 붙여넣지 않고 "어떻게 구현했는지 이해하고 있다"를 보여주는 핵심 스니펫만 골라 담았습니다. 이스토리(before/after)는 여기가 아니라 7장 "보안 약점과 수정 내역"에서 다룹니다 — 겹치지 않도록 역할을 나눴습니다.)*
+
+### 4.1 사용 라이브러리
 
 | 라이브러리 | 역할 |
 |---|---|
@@ -187,12 +189,92 @@ server/
 | Flask-Limiter | 엔드포인트별 rate limiting |
 | bcrypt | 비밀번호 해시(salt 자동 포함) |
 
-핵심 검증 규칙 (`security.py`, `forms.py`):
-- 아이디: 영문/숫자/밑줄 3~20자 (`USERNAME_RE`)
-- 비밀번호: 8~64자, 영문+숫자 각 1자 이상 (`PASSWORD_RE`)
-- 상품명 1~100자, 설명 1~2000자, 가격 0~10억 (`ProductForm`)
-- 신고 사유 5~500자, `target_type`은 `user`/`product` 화이트리스트만 허용
-- 송금액 1~10억 (`TransferForm`)
+### 4.2 핵심 구현 스니펫
+
+*(작성 가이드: 각 스니펫 아래에 "왜 이렇게 짰는지" 한두 줄을 본인 말로 붙이세요. 파일 경로:줄번호 형태로 출처를 밝혀두면 채점자가 바로 찾아볼 수 있습니다.)*
+
+**비밀번호 해시 저장** (`server/security.py`)
+```python
+def hash_password(raw_password: str) -> str:
+    return bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(raw_password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(raw_password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        return False
+```
+- [ ] 왜 이렇게 했는지:
+
+**CSRF 보호 전역 적용** (`server/extensions.py`)
+```python
+csrf = CSRFProtect()
+# app.py에서 csrf.init_app(app)으로 전체 앱에 적용
+```
+- [ ] 왜 이렇게 했는지:
+
+**상품 수정/삭제 소유자 검증 (IDOR 방지)** (`server/blueprints/products.py`)
+```python
+@products_bp.route("/product/<product_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    if product.seller_id != current_user.id:
+        abort(403)
+    ...
+```
+- [ ] 왜 이렇게 했는지:
+
+**신고 임계치 자동 조치** (`server/blueprints/reports.py`)
+```python
+def _apply_threshold(target_type, target_id):
+    count = Report.query.filter_by(target_type=target_type, target_id=target_id).count()
+    if target_type == "product":
+        product = db.session.get(Product, target_id)
+        product.report_count = count
+        if count >= Config.REPORT_THRESHOLD_PRODUCT:
+            product.status = "blocked"
+            db.session.add(AuditLog(actor_id=None, action="auto_block_product", target=target_id))
+        db.session.commit()
+    # target_type == "user" 분기도 동일한 방식으로 처리
+```
+- [ ] 왜 이렇게 했는지:
+
+**송금 검증 및 원자적 처리** (`server/blueprints/transfers.py`)
+```python
+if receiver is None:
+    flash("받는 사람을 찾을 수 없습니다.", "danger")
+elif receiver.id == current_user.id:
+    flash("자기 자신에게는 송금할 수 없습니다.", "danger")
+elif receiver.status == "suspended":
+    flash("정지된 사용자에게는 송금할 수 없습니다.", "danger")
+elif current_user.balance < amount:
+    flash("잔액이 부족합니다.", "danger")
+else:
+    _execute_transfer(current_user, receiver, amount, kind="transfer")
+```
+- [ ] 왜 이렇게 했는지:
+
+**관리자 권한 검증 데코레이터** (`server/blueprints/admin.py`)
+```python
+def admin_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if not current_user.is_admin():
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+```
+- [ ] 왜 이렇게 했는지:
+
+### 4.3 핵심 검증 규칙
+
+- 아이디: 영문/숫자/밑줄 3~20자 (`security.py: USERNAME_RE`)
+- 비밀번호: 8~64자, 영문+숫자 각 1자 이상 (`security.py: PASSWORD_RE`)
+- 상품명 1~100자, 설명 1~2000자, 가격 0~10억 (`forms.py: ProductForm`)
+- 신고 사유 5~500자, `target_type`은 `user`/`product` 화이트리스트만 허용 (`forms.py: ReportForm`)
+- 송금액 1~10억 (`forms.py: TransferForm`)
 
 ---
 
