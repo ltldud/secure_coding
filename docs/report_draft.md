@@ -390,14 +390,25 @@ def handle_send_message(data):
         disconnect()
         return
 
+    room = str(data.get("room", ""))[:80]
     content = str(data.get("content", "")).strip()
     if not content or len(content) > MAX_MESSAGE_LEN:
         return
+
+    # join에서만 참여자 여부를 확인하면, 클라이언트가 join 없이 room id만 넣어
+    # send_message를 직접 호출하는 경우를 놓친다 - 그래서 전송 시점에도 매번
+    # 다시 검증한다.
+    if room != GLOBAL_ROOM:
+        convo = db.session.get(Conversation, room)
+        if convo is None or current_user.id not in (convo.user_a_id, convo.user_b_id):
+            disconnect()
+            return
+
     if _rate_limited(current_user.id):
         emit("system_notice", {"message": "너무 빠르게 메시지를 보내고 있습니다."})
         return
 
-    msg = Message(room=data.get("room", ""), sender_id=current_user.id, content=content)
+    msg = Message(room=room, sender_id=current_user.id, content=content)
     db.session.add(msg)
     db.session.commit()
     emit("receive_message", {"sender": current_user.username, "content": content}, room=msg.room)
