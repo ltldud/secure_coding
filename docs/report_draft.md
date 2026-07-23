@@ -137,15 +137,16 @@
 
 ### 3.9 데이터베이스 설계
 
-- 사용자 정보 (사용자 아이디, 계정명, 비밀번호 해시, 소개글, 잔액, 권한(user/admin), 상태(active/suspended), 신고 누적 횟수, 로그인 실패 횟수, 잠금 해제 시각)
-- 상품 정보 (상품 아이디, 상품명, 상품 설명, 가격, 판매자 아이디, 상태(active/sold/blocked), 신고 누적 횟수)
+- 사용자 정보 (사용자 아이디, 계정명, 비밀번호 해시, 소개글, 잔액, 권한(user/admin), 상태(active/suspended), 신고 누적 횟수, 로그인 실패 횟수, 잠금 해제 시각, 비밀번호 찾기 질문/답변 해시)
+- 상품 정보 (상품 아이디, 상품명, 상품 설명, 가격, 판매자 아이디, 상태(active/sold/blocked), 신고 누적 횟수, 사진 파일명)
 - 신고 정보 (신고 아이디, 신고자 아이디, 대상 유형(user/product), 대상 아이디, 신고 사유, 처리 상태) — 동일 대상 중복 신고 방지를 위해 (신고자, 대상 유형, 대상 아이디) 조합에 유니크 제약
 - 대화방 정보 (대화방 아이디, 참여자 A 아이디, 참여자 B 아이디) — 1대1 채팅을 위해 직접 설계 시 추가한 테이블
 - 메시지 정보 (메시지 아이디, 채팅방, 발신자 아이디, 내용, 작성 시각) — 전체 채팅방/1대1 대화방 공용
 - 거래 정보 (거래 아이디, 송신자 아이디, 수신자 아이디, 금액, 종류(송금/구매), 연관 상품 아이디) — 송금 기능을 위해 직접 설계 시 추가한 테이블
 - 감사 로그 정보 (로그 아이디, 조치자 아이디, 조치 내용, 대상) — 관리자 조치 추적을 위해 직접 설계 시 추가한 테이블
+- 읽음 마커 정보 (마커 아이디, 사용자 아이디, 채팅방, 마지막 열람 시각) — *(유지보수 단계에서 추가)* 채팅 사이드바의 안읽음 배지를 계산하기 위해 추가한 테이블, (사용자, 채팅방) 조합에 유니크 제약
 
-*(작성 가이드: 사용자/상품/신고 정보는 강의 기준 슬라이드에 제시된 항목이고, 대화방/메시지/거래/감사로그는 직접 설계 요구사항(1대1 채팅·송금·관리자)을 구현하기 위해 본인이 추가한 테이블입니다 — 왜 필요했는지 한 줄씩 붙이면 좋습니다.)*
+*(작성 가이드: 사용자/상품/신고 정보는 강의 기준 슬라이드에 제시된 항목이고, 대화방/메시지/거래/감사로그/읽음 마커는 직접 설계 요구사항(1대1 채팅·송금·관리자) 또는 이후 유지보수를 위해 본인이 추가한 테이블입니다 — 왜 필요했는지 한 줄씩 붙이면 좋습니다. 비밀번호 찾기 질문/답변 해시, 사진 파일명 컬럼도 마찬가지로 유지보수 단계에서 기존 테이블에 추가한 것입니다(6장 참고).)*
 
 ### 3.10 아키텍처 구조
 
@@ -231,6 +232,8 @@ def register():
 
         user = User(username=form.username.data, balance=Config.STARTING_BALANCE)
         user.set_password(form.password.data)   # bcrypt 해시 저장 (security.py)
+        user.security_question = form.security_question.data.strip()
+        user.set_security_answer(form.security_answer.data)   # 유지보수 단계에서 추가, 6장 참고
         db.session.add(user)
         db.session.commit()
         return redirect(url_for("auth.login"))
@@ -309,6 +312,8 @@ def new_product():
             price=form.price.data,
             seller_id=current_user.id,
         )
+        if form.image.data:   # 유지보수 단계에서 추가, 6장 참고
+            product.image_filename = _save_product_image(form.image.data)
         db.session.add(product)
         db.session.commit()
         return redirect(url_for("products.view_product", product_id=product.id))
@@ -437,6 +442,13 @@ def report():
         target = _resolve_target(form.target_type.data, form.target_id.data)
         if target is None:
             abort(404)
+        if form.target_type.data == "user" and form.target_id.data == current_user.id:
+            flash("자기 자신은 신고할 수 없습니다.", "danger")
+            return redirect(url_for("products.dashboard"))
+        if form.target_type.data == "product" and target.seller_id == current_user.id:
+            flash("자신의 상품은 신고할 수 없습니다.", "danger")
+            return redirect(url_for("products.dashboard"))
+
         rpt = Report(reporter_id=current_user.id, target_type=form.target_type.data,
                      target_id=form.target_id.data, reason=form.reason.data.strip())
         db.session.add(rpt)
@@ -454,19 +466,30 @@ def report():
 **불량 상품 차단 / 불량 유저 휴면 기능 (임계치 자동 조치)** (`server/blueprints/reports.py: _apply_threshold`)
 ```python
 def _apply_threshold(target_type, target_id):
-    count = Report.query.filter_by(target_type=target_type, target_id=target_id).count()
+    # 기각(dismissed)된 신고는 재차단/재정지 판단에서 제외 (유지보수 단계에서 발견 및 수정, 7장 #16 참고)
+    count = (
+        Report.query.filter_by(target_type=target_type, target_id=target_id)
+        .filter(Report.status != "dismissed")
+        .count()
+    )
     if target_type == "product":
         product = db.session.get(Product, target_id)
+        if product is None or product.status == "blocked":
+            return
         product.report_count = count
         if count >= Config.REPORT_THRESHOLD_PRODUCT:
             product.status = "blocked"
+            Report.query.filter_by(target_type="product", target_id=target_id).update({"status": "actioned"})
             db.session.add(AuditLog(actor_id=None, action="auto_block_product", target=target_id))
         db.session.commit()
     elif target_type == "user":
         user = db.session.get(User, target_id)
+        if user is None or user.status == "suspended":
+            return
         user.report_count = count
         if count >= Config.REPORT_THRESHOLD_USER:
             user.status = "suspended"
+            Report.query.filter_by(target_type="user", target_id=target_id).update({"status": "actioned"})
             db.session.add(AuditLog(actor_id=None, action="auto_suspend_user", target=target_id))
         db.session.commit()
 ```
@@ -602,6 +625,9 @@ def suspend_user(user_id):
 - 상품명 1~100자, 설명 1~2000자, 가격 1~10억 (`forms.py: ProductForm`)
 - 신고 사유 5~500자, `target_type`은 `user`/`product` 화이트리스트만 허용 (`forms.py: ReportForm`)
 - 송금액 1~10억 (`forms.py: TransferForm`)
+- *(유지보수 단계에서 추가)* 비밀번호 찾기 질문 3~200자, 답변 1~200자 (`forms.py: RegisterForm/SecurityQuestionForm`)
+- *(유지보수 단계에서 추가)* 상품 사진: 확장자 화이트리스트(jpg/png/gif/webp), 2MB 이하 (`forms.py: ProductForm`)
+- *(유지보수 단계에서 추가)* 가격대 검색 필터는 0 이상 정수만 허용, 상태 필터는 `active`/`sold` 화이트리스트만 허용 (`blueprints/products.py: dashboard`)
 
 ---
 
