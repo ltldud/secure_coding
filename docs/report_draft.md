@@ -708,14 +708,132 @@ def suspend_user(user_id):
 - **인메모리 rate limit → 다중 프로세스 배포 시 Redis 필요.** 이유: Flask-Limiter의 요청 횟수, 그리고 채팅 도배 방지 카운터(`_recent_sends`)가 전부 파이썬 프로세스 메모리 안에만 존재한다. 워커를 한 개만 띄우면 문제 없지만, 운영에서 흔히 하듯 워커를 여러 개 띄우면 각 워커가 자기가 받은 요청만 세기 때문에, 예를 들어 "로그인 시도 15회/5분" 제한이 워커 수만큼 사실상 늘어나는 셈이 되어 제한이 무력화된다. Redis처럼 모든 워커가 공유하는 저장소로 옮겨야 실제로 의도한 제한이 유지된다.
 - **(이번에 새로 추가) 상품 이미지가 로컬 파일시스템(`server/static/uploads/products/`)에 저장됨 → 다중 서버 배포 시 공유 스토리지(S3 등) 필요.** 이유: 업로드된 이미지가 요청을 처리한 서버의 디스크에만 남기 때문에, 여러 서버 인스턴스로 확장하면 이미지를 올릴 때와 조회할 때 요청이 다른 서버로 가는 경우 이미지가 없는 것처럼 보일 수 있다. S3 같은 오브젝트 스토리지나 서버 간에 공유되는 네트워크 파일시스템으로 옮겨야 한다.
 
-**향후 개선 방향(본인 생각)**
+**향후 개선 방향(본인 생각) — 직접 구현**
 
-이번 유지보수 단계에서, 실제로 이 플랫폼을 사용자처럼 써보면서 느낀 불편함 4가지를 Claude Code(AI 도구)와 함께 직접 구현해봤다.
+이번 유지보수 단계에서, 실제로 이 플랫폼을 사용자처럼 써보면서 느낀 불편함 4가지를 Claude Code(AI 도구)와 함께 직접 구현해봤다. 3~4장과 같은 형식으로, 핵심 코드와 함께 정리한다.
 
-- **상품 사진**: `Product`에 `image_filename` 컬럼을 추가했다. 업로드된 파일의 원본 이름을 그대로 믿지 않고 서버에서 `uuid` 기반 새 파일명을 생성해 저장하고(경로 조작 방지), 확장자 화이트리스트(jpg/png/gif/webp)와 용량 제한(2MB)을 검증한다. 중고거래 플랫폼인데 사진 없이 텍스트로만 물건을 올려야 했던 게 가장 크게 체감된 문제였다.
-- **비밀번호 찾기**: 이메일 발송 인프라 없이도 동작하도록, 가입 시 사용자가 직접 정의한 보안 질문/답변(비밀번호와 동일하게 bcrypt로 해시 저장)으로 본인 확인 후 새 비밀번호를 설정하는 2단계 플로우(`/forgot-password` → `/forgot-password/verify`)를 추가했다. 기존 계정(가입 시 이 기능이 없었던 계정)은 마이페이지에서 나중에 질문을 설정할 수 있다. 이 기능이 없어서 본인 계정 비밀번호를 잊어버렸을 때 복구할 방법이 전혀 없었던 게, 이번 과제를 진행하며 직접 겪은 문제였다.
-- **채팅 안읽음 표시**: `ReadMarker` 테이블로 사용자별·채팅방별 마지막 열람 시각을 기록해서, 사이드바에 안 읽은 메시지 개수를 배지로 보여준다. 상대가 말을 걸었는지 매번 들어가서 확인해야 했던 문제를 해결했다.
-- **검색 필터**: 대시보드 검색에 가격대(최소/최대)와 판매상태(판매중/판매완료) 필터를 추가해서, 상품이 많아져도 원하는 조건으로 좁혀볼 수 있게 했다.
+#### 1) 상품 사진
+
+중고거래 플랫폼인데 사진 없이 텍스트로만 물건을 올려야 했던 게 가장 크게 체감된 문제였다. `Product`에 `image_filename` 컬럼을 추가하고, 업로드된 파일의 원본 이름을 그대로 믿지 않고 서버에서 `uuid` 기반 새 파일명을 생성해 저장한다(경로 조작·파일명 충돌 방지). 확장자 화이트리스트(jpg/png/gif/webp)와 용량 제한(2MB)은 폼 검증 단계에서 걸러낸다.
+
+**폼 검증** (`server/forms.py: ProductForm`)
+```python
+image = FileField(
+    "상품 사진 (선택)",
+    validators=[
+        Optional(),
+        FileAllowed(sorted(Config.ALLOWED_IMAGE_EXTENSIONS), "이미지 파일(jpg/png/gif/webp)만 업로드 가능합니다."),
+        FileSize(max_size=Config.MAX_IMAGE_SIZE, message="이미지 파일은 2MB 이하만 가능합니다."),
+    ],
+)
+```
+
+**저장 시 파일명 재생성** (`server/blueprints/products.py: _save_product_image`)
+```python
+def _save_product_image(file_storage):
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower()
+    filename = f"{uuid.uuid4().hex}.{ext}"   # 원본 파일명은 신뢰하지 않음
+    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+    file_storage.save(os.path.join(Config.UPLOAD_FOLDER, filename))
+    return filename
+```
+- [ ] 스크린샷: 사진과 함께 등록된 상품의 상세 페이지 / 목록 썸네일
+
+#### 2) 비밀번호 찾기
+
+본인 계정 비밀번호를 잊어버렸을 때 복구할 방법이 전혀 없었던 게, 이번 과제를 진행하며 직접 겪은 문제였다(이 대화 맨 처음에 실제로 겪었다). 이메일 발송 인프라 없이도 동작하도록, 가입 시 사용자가 직접 정의한 보안 질문/답변으로 본인 확인 후 새 비밀번호를 설정하는 2단계 플로우를 추가했다. 답변은 비밀번호와 마찬가지로 평문 저장하지 않고 bcrypt로 해시한다.
+
+**답변 해시 저장/검증** (`server/security.py`)
+```python
+def _normalize_answer(raw_answer: str) -> str:
+    return raw_answer.strip().lower()   # 대소문자·공백 차이는 무시
+
+def hash_answer(raw_answer: str) -> str:
+    return bcrypt.hashpw(_normalize_answer(raw_answer).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_answer(raw_answer: str, answer_hash: str) -> bool:
+    return bcrypt.checkpw(_normalize_answer(raw_answer).encode("utf-8"), answer_hash.encode("utf-8"))
+```
+
+**재설정 라우트** (`server/blueprints/auth.py: forgot_password_verify`)
+```python
+@auth_bp.route("/forgot-password/verify", methods=["GET", "POST"])
+@limiter.limit("10 per hour")
+def forgot_password_verify():
+    user_id = session.get("pwreset_user_id")
+    user = db.session.get(User, user_id) if user_id else None
+    if user is None or not user.has_security_question():
+        return redirect(url_for("auth.forgot_password"))
+
+    form = ForgotVerifyForm()
+    if form.validate_on_submit():
+        if not user.check_security_answer(form.security_answer.data):
+            flash("답변이 올바르지 않습니다.", "danger")
+            return render_template("forgot_password_verify.html", form=form, question=user.security_question)
+        user.set_password(form.new_password.data)
+        user.reset_failed_login()
+        db.session.commit()
+        session.pop("pwreset_user_id", None)
+        return redirect(url_for("auth.login"))
+    return render_template("forgot_password_verify.html", form=form, question=user.security_question)
+```
+- [ ] 스크린샷: 비밀번호 찾기 질문 확인 화면 / 재설정 성공 후 새 비밀번호로 로그인한 화면
+
+#### 3) 채팅 안읽음 표시
+
+상대가 말을 걸었는지 매번 대화방에 직접 들어가서 확인해야 했던 문제를 해결했다. `ReadMarker` 테이블에 사용자별·채팅방(room)별 마지막 열람 시각을 기록해두고, 그 이후에 온 (내가 보내지 않은) 메시지 수를 사이드바에 배지로 보여준다.
+
+**모델** (`server/models.py: ReadMarker`)
+```python
+class ReadMarker(db.Model):
+    __tablename__ = "read_marker"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
+    room = db.Column(db.String(80), nullable=False)
+    last_read_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint("user_id", "room", name="uq_read_marker"),)
+```
+
+**안읽음 계산 / 읽음 처리** (`server/blueprints/chat.py`)
+```python
+def _unread_count(user_id, room):
+    marker = ReadMarker.query.filter_by(user_id=user_id, room=room).first()
+    since = marker.last_read_at if marker else _EPOCH
+    return (
+        Message.query.filter(Message.room == room, Message.created_at > since, Message.sender_id != user_id)
+        .count()
+    )
+
+def _mark_read(user_id, room):
+    marker = ReadMarker.query.filter_by(user_id=user_id, room=room).first()
+    now = datetime.utcnow()
+    if marker is None:
+        db.session.add(ReadMarker(user_id=user_id, room=room, last_read_at=now))
+    else:
+        marker.last_read_at = now
+    db.session.commit()
+```
+- [ ] 스크린샷: 사이드바에 안읽음 배지가 표시된 화면 / 대화방 열람 후 배지가 사라진 화면
+
+#### 4) 검색 필터 (가격대 / 판매상태)
+
+상품이 많아지면 제목/설명 검색만으로는 원하는 걸 찾기 번거로웠다. 대시보드 검색에 가격대(최소/최대)와 판매상태(판매중/판매완료) 필터를 추가했다. 기존의 `q` 검색어 이스케이프 방식은 그대로 두고, 가격/상태는 화이트리스트·범위 검증만 추가했다.
+
+**필터 적용** (`server/blueprints/products.py: dashboard`)
+```python
+status = request.args.get("status") or ""
+if status in ("active", "sold"):          # 화이트리스트 - blocked는 선택 불가
+    query = query.filter(Product.status == status)
+
+min_price = request.args.get("min_price", type=int)
+if min_price is not None and min_price >= 0:
+    query = query.filter(Product.price >= min_price)
+
+max_price = request.args.get("max_price", type=int)
+if max_price is not None and max_price >= 0:
+    query = query.filter(Product.price <= max_price)
+```
+- [ ] 스크린샷: 가격대/판매상태 필터를 적용한 상품 목록 화면
 
 더 개선한다면:
 - 안읽음 배지가 소켓 메시지 수신만으로 실시간 갱신되지 않고 페이지를 새로고침해야 반영된다 — 클라이언트에서 `receive_message` 이벤트를 받을 때 배지 카운트를 즉시 갱신하도록 개선할 수 있다.
