@@ -22,7 +22,14 @@ class Config:
 
     WTF_CSRF_TIME_LIMIT = None
 
-    MAX_CONTENT_LENGTH = 1 * 1024 * 1024  # 1MB request body cap
+    # 3MB request body cap - raised from 1MB to fit product image uploads
+    # (capped separately at 2MB via ProductForm's FileSize validator, so a
+    # request is always rejected well before this outer ceiling matters).
+    MAX_CONTENT_LENGTH = 3 * 1024 * 1024
+
+    UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads", "products")
+    ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+    MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2MB
 
     # Business rules
     STARTING_BALANCE = 1_000_000

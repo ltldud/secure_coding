@@ -5,6 +5,13 @@
 
 <form class="search-bar" method="get" action="{{ url_for('products.dashboard') }}">
   <input type="text" name="q" value="{{ q }}" placeholder="상품명 또는 설명 검색" maxlength="100">
+  <select name="status">
+    <option value="" {{ "selected" if not status }}>전체 상태</option>
+    <option value="active" {{ "selected" if status == "active" }}>판매중</option>
+    <option value="sold" {{ "selected" if status == "sold" }}>판매완료</option>
+  </select>
+  <input type="number" name="min_price" value="{{ min_price if min_price is not none else '' }}" placeholder="최소 가격" min="0" style="width:120px;">
+  <input type="number" name="max_price" value="{{ max_price if max_price is not none else '' }}" placeholder="최대 가격" min="0" style="width:120px;">
   <button class="btn" type="submit">검색</button>
 </form>
 
@@ -12,6 +19,11 @@
 <div class="product-grid">
   {% for p in products %}
   <a class="product-card" href="{{ url_for('products.view_product', product_id=p.id) }}">
+    {% if p.image_filename %}
+    <img class="product-thumb" src="{{ url_for('static', filename='uploads/products/' + p.image_filename) }}" alt="">
+    {% else %}
+    <div class="product-thumb placeholder">사진 없음</div>
+    {% endif %}
     <div>{{ p.title }}</div>
     <div class="price">{{ "{:,}".format(p.price) }}원</div>
     <div class="status">
@@ -26,11 +38,11 @@
 
 <div class="pagination">
   {% if pagination.has_prev %}
-    <a class="btn small secondary" href="{{ url_for('products.dashboard', q=q, page=pagination.prev_num) }}">이전</a>
+    <a class="btn small secondary" href="{{ url_for('products.dashboard', q=q, status=status, min_price=min_price, max_price=max_price, page=pagination.prev_num) }}">이전</a>
   {% endif %}
   <span class="muted">{{ pagination.page }} / {{ pagination.pages or 1 }}</span>
   {% if pagination.has_next %}
-    <a class="btn small secondary" href="{{ url_for('products.dashboard', q=q, page=pagination.next_num) }}">다음</a>
+    <a class="btn small secondary" href="{{ url_for('products.dashboard', q=q, status=status, min_price=min_price, max_price=max_price, page=pagination.next_num) }}">다음</a>
   {% endif %}
 </div>
 {% endblock %}

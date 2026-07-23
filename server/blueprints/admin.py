@@ -104,7 +104,10 @@ def unblock_product(product_id):
 @admin_bp.route("/products/<product_id>/delete", methods=["POST"])
 @admin_required
 def delete_product(product_id):
+    from blueprints.products import _delete_product_image
+
     product = Product.query.get_or_404(product_id)
+    _delete_product_image(product.image_filename)
     _log("admin_delete_product", product.id)
     db.session.delete(product)
     db.session.commit()

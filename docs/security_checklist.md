@@ -82,7 +82,7 @@
 | 보안 헤더 설정 | ✅ | `app.py` `after_request` - CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, (HTTPS 시)HSTS |
 | HTTPS 적용 | ⚠️ 운영 필요 | 로컬 개발은 HTTP. 배포 시 리버스 프록시에서 TLS 종단 후 `SESSION_COOKIE_SECURE=true` 설정 (README 안내) |
 | 에러/예외 처리 (민감정보 미노출) | ✅ | 커스텀 에러 페이지, `debug=False`(운영), 예외는 서버 로그에만 기록 |
-| 요청 크기 제한 | ✅ | `config.py` `MAX_CONTENT_LENGTH = 1MB` |
+| 요청 크기 제한 | ✅ | `config.py` `MAX_CONTENT_LENGTH = 3MB`(상품 이미지 업로드 수용을 위해 상향, 이미지 자체는 `ProductForm`의 `FileSize`로 2MB 추가 제한) |
 | Rate Limiting (전역) | ✅ | `Flask-Limiter` - 회원가입/로그인/신고/송금/구매 각각 개별 제한 |
 | 시크릿 키 하드코딩 금지 | ✅ | `config.py` `SECRET_KEY`는 환경변수에서만 로드(`.env`, 미설정 시 프로세스별 임시 랜덤값) |
 | 라이브러리 최신 버전 사용 | ✅ | `requirements.txt` 고정 버전 명시, 정기 점검 필요(운영 항목으로 README에 기재) |

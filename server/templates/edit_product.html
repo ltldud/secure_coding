@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card" style="max-width:480px;margin:0 auto;">
   <h2>상품 수정</h2>
-  <form method="post" novalidate>
+  <form method="post" enctype="multipart/form-data" novalidate>
     {{ form.hidden_tag() }}
     <label for="title">상품명</label>
     {{ form.title(id="title", maxlength=100) }}
@@ -16,6 +16,14 @@
     <label for="price">가격(원)</label>
     {{ form.price(id="price", min=0) }}
     {% for e in form.price.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+
+    {% if product.image_filename %}
+    <label>현재 사진</label>
+    <img src="{{ url_for('static', filename='uploads/products/' + product.image_filename) }}" style="max-width:160px;border-radius:8px;display:block;margin-bottom:8px;">
+    {% endif %}
+    <label for="image">{{ '사진 교체 (선택, 2MB 이하)' if product.image_filename else '상품 사진 (선택, 2MB 이하)' }}</label>
+    {{ form.image(id="image", accept="image/*") }}
+    {% for e in form.image.errors %}<div class="errors">{{ e }}</div>{% endfor %}
 
     <button class="btn" type="submit">수정 완료</button>
   </form>

@@ -91,9 +91,10 @@ c_reg = app.test_client()
 r = c_reg.get("/register")
 token = get_csrf(r.data.decode())
 
-r1 = c_reg.post("/register", data={"csrf_token": token, "username": "ab", "password": "Passw0rd123", "confirm": "Passw0rd123"})
+reg_sq = {"security_question": "테스트 질문", "security_answer": "테스트 답변"}
+r1 = c_reg.post("/register", data={"csrf_token": token, "username": "ab", "password": "Passw0rd123", "confirm": "Passw0rd123", **reg_sq})
 bad_username_rejected = "영문/숫자/밑줄" in r1.data.decode()
-r2 = c_reg.post("/register", data={"csrf_token": token, "username": "qa_t_regtest", "password": "abcdefgh", "confirm": "abcdefgh"})
+r2 = c_reg.post("/register", data={"csrf_token": token, "username": "qa_t_regtest", "password": "abcdefgh", "confirm": "abcdefgh", **reg_sq})
 bad_password_rejected = "8~64자" in r2.data.decode()
 with app.app_context():
     created = User.query.filter_by(username="qa_t_regtest").first() is None
@@ -468,11 +469,11 @@ record(31, "오류 메시지에 내부 정보 미노출", no_stacktrace,
        f"단, 현재 FLASK_ENV=development(DEBUG=True)이므로 처리되지 않은 500 예외는 Werkzeug 인터랙티브 "
        f"디버거가 뜰 수 있음 - 운영 배포 시 FLASK_ENV=production으로 전환 필요(README에 명시)")
 
-big_body = "x" * (2 * 1024 * 1024)
+big_body = "x" * (4 * 1024 * 1024)
 r32 = c_buyer.post("/product/new", data={"csrf_token": buyer_token, "title": "t", "description": big_body, "price": "1000"})
 size_limited = r32.status_code == 413
 record(32, "요청 본문 크기 제한", size_limited,
-       f"1MB 제한(MAX_CONTENT_LENGTH) 초과 요청(2MB) -> status={r32.status_code}")
+       f"3MB 제한(MAX_CONTENT_LENGTH, 상품 이미지 업로드 수용을 위해 1MB에서 상향) 초과 요청(4MB) -> status={r32.status_code}")
 
 c_rl = app.test_client()
 codes = []

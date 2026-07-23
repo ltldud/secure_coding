@@ -34,4 +34,28 @@
     <button class="btn" type="submit">비밀번호 변경</button>
   </form>
 </div>
+
+<div class="card">
+  <h3>비밀번호 찾기 질문</h3>
+  <p class="muted">
+    {% if current_user.has_security_question() %}
+      현재 등록된 질문: {{ current_user.security_question }} (아래에서 변경할 수 있습니다)
+    {% else %}
+      아직 설정하지 않았습니다. 비밀번호를 잊었을 때 본인 확인용으로 사용되니 지금 설정해두세요.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('profile.update_security_question') }}">
+    {{ sq_form.hidden_tag() }}
+    <label for="sq_current_password">현재 비밀번호</label>
+    {{ sq_form.current_password(id="sq_current_password") }}
+
+    <label for="sq_question">질문</label>
+    {{ sq_form.security_question(id="sq_question", maxlength=200) }}
+
+    <label for="sq_answer">답변</label>
+    {{ sq_form.security_answer(id="sq_answer", maxlength=200) }}
+
+    <button class="btn" type="submit">저장</button>
+  </form>
+</div>
 {% endblock %}

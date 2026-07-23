@@ -22,6 +22,11 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(10), default="user", nullable=False)  # 'user' | 'admin'
     status = db.Column(db.String(10), default="active", nullable=False)  # 'active' | 'suspended'
 
+    # Self-service password recovery. The answer is stored hashed (like the
+    # password itself) since it's a second credential, not free-text data.
+    security_question = db.Column(db.String(200), nullable=True)
+    security_answer_hash = db.Column(db.String(128), nullable=True)
+
     report_count = db.Column(db.Integer, default=0, nullable=False)  # times reported as a target
     failed_login_count = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime, nullable=True)
@@ -38,6 +43,19 @@ class User(UserMixin, db.Model):
     def check_password(self, raw_password: str) -> bool:
         from security import verify_password
         return verify_password(raw_password, self.password_hash)
+
+    def set_security_answer(self, raw_answer: str):
+        from security import hash_answer
+        self.security_answer_hash = hash_answer(raw_answer)
+
+    def check_security_answer(self, raw_answer: str) -> bool:
+        from security import verify_answer
+        if not self.security_answer_hash:
+            return False
+        return verify_answer(raw_answer, self.security_answer_hash)
+
+    def has_security_question(self) -> bool:
+        return bool(self.security_question and self.security_answer_hash)
 
     def is_locked(self) -> bool:
         return self.locked_until is not None and self.locked_until > datetime.utcnow()
@@ -72,6 +90,9 @@ class Product(db.Model):
     description = db.Column(db.String(2000), nullable=False)
     price = db.Column(db.Integer, nullable=False)
     seller_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False, index=True)
+    # Stored under static/uploads/products/ as a server-generated uuid
+    # filename - the original client filename is never trusted/persisted.
+    image_filename = db.Column(db.String(255), nullable=True)
 
     status = db.Column(db.String(10), default="active", nullable=False)  # active | sold | blocked
     report_count = db.Column(db.Integer, default=0, nullable=False)
@@ -134,6 +155,22 @@ class Transaction(db.Model):
     kind = db.Column(db.String(10), default="transfer", nullable=False)  # transfer | purchase
     product_id = db.Column(db.String(36), db.ForeignKey("product.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ReadMarker(db.Model):
+    """Per-user last-read timestamp for a chat room (global or 1:1), used to
+    show an unread indicator in the chat sidebar without polling message
+    content on every page load."""
+    __tablename__ = "read_marker"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
+    room = db.Column(db.String(80), nullable=False)
+    last_read_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "room", name="uq_read_marker"),
+    )
 
 
 class AuditLog(db.Model):

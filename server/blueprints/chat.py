@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from collections import defaultdict, deque
 
 from flask import Blueprint, render_template, abort
@@ -6,7 +7,7 @@ from flask_login import login_required, current_user
 from flask_socketio import join_room, emit, disconnect
 
 from extensions import db, socketio
-from models import User, Conversation, Message
+from models import User, Conversation, Message, ReadMarker
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -42,6 +43,28 @@ def _get_or_create_conversation(user_a_id, user_b_id):
     return convo
 
 
+_EPOCH = datetime(1970, 1, 1)
+
+
+def _mark_read(user_id, room):
+    marker = ReadMarker.query.filter_by(user_id=user_id, room=room).first()
+    now = datetime.utcnow()
+    if marker is None:
+        db.session.add(ReadMarker(user_id=user_id, room=room, last_read_at=now))
+    else:
+        marker.last_read_at = now
+    db.session.commit()
+
+
+def _unread_count(user_id, room):
+    marker = ReadMarker.query.filter_by(user_id=user_id, room=room).first()
+    since = marker.last_read_at if marker else _EPOCH
+    return (
+        Message.query.filter(Message.room == room, Message.created_at > since, Message.sender_id != user_id)
+        .count()
+    )
+
+
 def _sidebar_conversations(user_id):
     convos = Conversation.query.filter(
         (Conversation.user_a_id == user_id) | (Conversation.user_b_id == user_id)
@@ -60,6 +83,7 @@ def _sidebar_conversations(user_id):
             "room_id": convo.id,
             "other": other,
             "last_message": last_message,
+            "unread": _unread_count(user_id, convo.id),
             "sort_key": last_message.created_at if last_message else convo.created_at,
         })
 
@@ -77,10 +101,12 @@ def global_chat():
         .all()
     )
     history.reverse()
+    _mark_read(current_user.id, GLOBAL_ROOM)
     return render_template(
         "chat_global.html",
         history=history,
         conversations=_sidebar_conversations(current_user.id),
+        global_unread=0,
         active_room=GLOBAL_ROOM,
     )
 
@@ -100,12 +126,15 @@ def direct_chat(username):
         .all()
     )
     history.reverse()
+    global_unread = _unread_count(current_user.id, GLOBAL_ROOM)
+    _mark_read(current_user.id, convo.id)
     return render_template(
         "chat_dm.html",
         history=history,
         other=other,
         room=convo.id,
         conversations=_sidebar_conversations(current_user.id),
+        global_unread=global_unread,
         active_room=convo.id,
     )
 

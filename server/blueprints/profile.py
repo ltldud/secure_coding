@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 
 from extensions import db, limiter
 from models import User
-from forms import ProfileForm, PasswordChangeForm
+from forms import ProfileForm, PasswordChangeForm, SecurityQuestionForm
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -13,7 +13,8 @@ profile_bp = Blueprint("profile", __name__)
 def mypage():
     form = ProfileForm(obj=current_user)
     pw_form = PasswordChangeForm()
-    return render_template("profile.html", form=form, pw_form=pw_form)
+    sq_form = SecurityQuestionForm()
+    return render_template("profile.html", form=form, pw_form=pw_form, sq_form=sq_form)
 
 
 @profile_bp.route("/profile/bio", methods=["POST"])
@@ -45,6 +46,26 @@ def update_password():
         flash("비밀번호가 변경되었습니다.", "success")
     else:
         for errs in pw_form.errors.values():
+            for e in errs:
+                flash(e, "danger")
+    return redirect(url_for("profile.mypage"))
+
+
+@profile_bp.route("/profile/security", methods=["POST"])
+@login_required
+@limiter.limit("10 per hour")
+def update_security_question():
+    sq_form = SecurityQuestionForm()
+    if sq_form.validate_on_submit():
+        if not current_user.check_password(sq_form.current_password.data):
+            flash("현재 비밀번호가 올바르지 않습니다.", "danger")
+            return redirect(url_for("profile.mypage"))
+        current_user.security_question = sq_form.security_question.data.strip()
+        current_user.set_security_answer(sq_form.security_answer.data)
+        db.session.commit()
+        flash("비밀번호 찾기 질문이 설정되었습니다.", "success")
+    else:
+        for errs in sq_form.errors.values():
             for e in errs:
                 flash(e, "danger")
     return redirect(url_for("profile.mypage"))

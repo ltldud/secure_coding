@@ -6,12 +6,12 @@
     <div class="chat-sidebar-header">채팅</div>
     <a class="chat-sidebar-item {{ 'active' if active_room == 'global' else '' }}"
        href="{{ url_for('chat.global_chat') }}">
-      <span class="chat-sidebar-name"># 전체 채팅</span>
+      <span class="chat-sidebar-name"># 전체 채팅 {% if global_unread %}<span class="chat-unread-badge">{{ global_unread }}</span>{% endif %}</span>
     </a>
     {% for row in conversations %}
     <a class="chat-sidebar-item {{ 'active' if active_room == row.room_id else '' }}"
        href="{{ url_for('chat.direct_chat', username=row.other.username) if row.other else '#' }}">
-      <span class="chat-sidebar-name">{{ row.other.username if row.other else '알수없음' }}</span>
+      <span class="chat-sidebar-name">{{ row.other.username if row.other else '알수없음' }} {% if row.unread %}<span class="chat-unread-badge">{{ row.unread }}</span>{% endif %}</span>
       {% if row.last_message %}
       <span class="chat-sidebar-preview">{{ row.last_message.content }}</span>
       {% endif %}

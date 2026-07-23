@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 server/market.db
 server/.env
+server/static/uploads/
 .env
 *.pdf

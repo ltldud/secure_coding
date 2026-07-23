@@ -18,6 +18,23 @@ def verify_password(raw_password: str, password_hash: str) -> bool:
         return False
 
 
+def _normalize_answer(raw_answer: str) -> str:
+    # Case/whitespace shouldn't matter for a security-question answer, but
+    # normalize before hashing so the check is consistent either way.
+    return raw_answer.strip().lower()
+
+
+def hash_answer(raw_answer: str) -> str:
+    return bcrypt.hashpw(_normalize_answer(raw_answer).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_answer(raw_answer: str, answer_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(_normalize_answer(raw_answer).encode("utf-8"), answer_hash.encode("utf-8"))
+    except ValueError:
+        return False
+
+
 def is_valid_username(username: str) -> bool:
     return bool(username) and bool(USERNAME_RE.match(username))
 

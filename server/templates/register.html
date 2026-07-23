@@ -17,6 +17,14 @@
     {{ form.confirm(id="confirm", autocomplete="new-password") }}
     {% for e in form.confirm.errors %}<div class="errors">{{ e }}</div>{% endfor %}
 
+    <label for="security_question">비밀번호 찾기 질문 (본인이 직접 정의하세요, 예: "가장 좋아하는 음식은?")</label>
+    {{ form.security_question(id="security_question", maxlength=200) }}
+    {% for e in form.security_question.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+
+    <label for="security_answer">답변</label>
+    {{ form.security_answer(id="security_answer", maxlength=200) }}
+    {% for e in form.security_answer.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+
     <button class="btn" type="submit">가입하기</button>
   </form>
   <p class="muted" style="margin-top:14px;">이미 계정이 있으신가요? <a href="{{ url_for('auth.login') }}">로그인</a></p>
