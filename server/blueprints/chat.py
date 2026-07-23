@@ -42,6 +42,31 @@ def _get_or_create_conversation(user_a_id, user_b_id):
     return convo
 
 
+def _sidebar_conversations(user_id):
+    convos = Conversation.query.filter(
+        (Conversation.user_a_id == user_id) | (Conversation.user_b_id == user_id)
+    ).all()
+
+    rows = []
+    for convo in convos:
+        other_id = convo.user_b_id if convo.user_a_id == user_id else convo.user_a_id
+        other = db.session.get(User, other_id)
+        last_message = (
+            Message.query.filter_by(room=convo.id)
+            .order_by(Message.created_at.desc())
+            .first()
+        )
+        rows.append({
+            "room_id": convo.id,
+            "other": other,
+            "last_message": last_message,
+            "sort_key": last_message.created_at if last_message else convo.created_at,
+        })
+
+    rows.sort(key=lambda r: r["sort_key"], reverse=True)
+    return rows
+
+
 @chat_bp.route("/chat")
 @login_required
 def global_chat():
@@ -52,7 +77,12 @@ def global_chat():
         .all()
     )
     history.reverse()
-    return render_template("chat_global.html", history=history)
+    return render_template(
+        "chat_global.html",
+        history=history,
+        conversations=_sidebar_conversations(current_user.id),
+        active_room=GLOBAL_ROOM,
+    )
 
 
 @chat_bp.route("/chat/dm/<username>")
@@ -70,7 +100,14 @@ def direct_chat(username):
         .all()
     )
     history.reverse()
-    return render_template("chat_dm.html", history=history, other=other, room=convo.id)
+    return render_template(
+        "chat_dm.html",
+        history=history,
+        other=other,
+        room=convo.id,
+        conversations=_sidebar_conversations(current_user.id),
+        active_room=convo.id,
+    )
 
 
 def _sender_name(user_id):

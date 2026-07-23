@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "chat_layout.html" %}
 {% block title %}{{ other.username }}님과의 채팅{% endblock %}
-{% block content %}
+{% block chat_main %}
 <h2>{{ other.username }}님과의 채팅</h2>
 <div id="chat-app" data-room="{{ room }}">
   <div id="chat-box" class="chat-box">
