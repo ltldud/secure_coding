@@ -19,15 +19,13 @@ class User(UserMixin, db.Model):
     bio = db.Column(db.String(500), default="", nullable=False)
     balance = db.Column(db.Integer, default=0, nullable=False)
 
-    role = db.Column(db.String(10), default="user", nullable=False)  # 'user' | 'admin'
-    status = db.Column(db.String(10), default="active", nullable=False)  # 'active' | 'suspended'
+    role = db.Column(db.String(10), default="user", nullable=False)
+    status = db.Column(db.String(10), default="active", nullable=False)
 
-    # Self-service password recovery. The answer is stored hashed (like the
-    # password itself) since it's a second credential, not free-text data.
     security_question = db.Column(db.String(200), nullable=True)
     security_answer_hash = db.Column(db.String(128), nullable=True)
 
-    report_count = db.Column(db.Integer, default=0, nullable=False)  # times reported as a target
+    report_count = db.Column(db.Integer, default=0, nullable=False)
     failed_login_count = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime, nullable=True)
 
@@ -76,7 +74,6 @@ class User(UserMixin, db.Model):
     def is_suspended(self) -> bool:
         return self.status == "suspended"
 
-    # UserMixin.is_active drives Flask-Login; suspended users can't stay logged in.
     @property
     def is_active(self):
         return self.status == "active"
@@ -90,11 +87,9 @@ class Product(db.Model):
     description = db.Column(db.String(2000), nullable=False)
     price = db.Column(db.Integer, nullable=False)
     seller_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False, index=True)
-    # Stored under static/uploads/products/ as a server-generated uuid
-    # filename - the original client filename is never trusted/persisted.
     image_filename = db.Column(db.String(255), nullable=True)
 
-    status = db.Column(db.String(10), default="active", nullable=False)  # active | sold | blocked
+    status = db.Column(db.String(10), default="active", nullable=False)
     report_count = db.Column(db.Integer, default=0, nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -105,10 +100,10 @@ class Report(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     reporter_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
-    target_type = db.Column(db.String(10), nullable=False)  # 'user' | 'product'
+    target_type = db.Column(db.String(10), nullable=False)
     target_id = db.Column(db.String(36), nullable=False)
     reason = db.Column(db.String(500), nullable=False)
-    status = db.Column(db.String(15), default="pending", nullable=False)  # pending | actioned | dismissed
+    status = db.Column(db.String(15), default="pending", nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     __table_args__ = (
@@ -137,7 +132,7 @@ class Message(db.Model):
     __tablename__ = "message"
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    room = db.Column(db.String(80), nullable=False, index=True)  # 'global' or conversation id
+    room = db.Column(db.String(80), nullable=False, index=True)
     sender_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
     content = db.Column(db.String(1000), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -152,7 +147,7 @@ class Transaction(db.Model):
     sender_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
     receiver_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
-    kind = db.Column(db.String(10), default="transfer", nullable=False)  # transfer | purchase
+    kind = db.Column(db.String(10), default="transfer", nullable=False)
     product_id = db.Column(db.String(36), db.ForeignKey("product.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 

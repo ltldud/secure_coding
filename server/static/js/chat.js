@@ -1,7 +1,3 @@
-// Renders chat messages via textContent (never innerHTML) so message
-// content can never be interpreted as HTML/script, regardless of what a
-// user types — this is the client-side XSS defense to match the server's
-// input-length checks.
 function initChat(room) {
   const socket = io();
   const box = document.getElementById("chat-box");

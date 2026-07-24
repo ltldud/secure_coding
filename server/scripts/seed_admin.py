@@ -14,11 +14,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app import app  # noqa: E402
-from extensions import db  # noqa: E402
-from models import User  # noqa: E402
-from config import Config  # noqa: E402
-from security import is_valid_username, is_valid_password  # noqa: E402
+from app import app
+from extensions import db
+from models import User
+from config import Config
+from security import is_valid_username, is_valid_password
 
 
 def main():

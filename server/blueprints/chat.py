@@ -16,9 +16,6 @@ MAX_MESSAGE_LEN = 500
 RATE_WINDOW_SECONDS = 10
 RATE_MAX_MESSAGES = 8
 
-# In-memory per-user send timestamps for chat rate limiting. Acceptable for a
-# single-process dev deployment; a multi-process/production deployment would
-# move this to a shared store (e.g. Redis) instead.
 _recent_sends = defaultdict(deque)
 
 

@@ -5,9 +5,6 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config:
-    # SECRET_KEY must come from the environment in real deployments; the
-    # fallback below is only for local/dev convenience and is intentionally
-    # different every process start so a stale dev key can't leak into prod.
     SECRET_KEY = os.environ.get("SECRET_KEY") or os.urandom(32).hex()
 
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -22,16 +19,12 @@ class Config:
 
     WTF_CSRF_TIME_LIMIT = None
 
-    # 3MB request body cap - raised from 1MB to fit product image uploads
-    # (capped separately at 2MB via ProductForm's FileSize validator, so a
-    # request is always rejected well before this outer ceiling matters).
     MAX_CONTENT_LENGTH = 3 * 1024 * 1024
 
     UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads", "products")
     ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
-    MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2MB
+    MAX_IMAGE_SIZE = 2 * 1024 * 1024
 
-    # Business rules
     STARTING_BALANCE = 1_000_000
     REPORT_THRESHOLD_PRODUCT = 5
     REPORT_THRESHOLD_USER = 5

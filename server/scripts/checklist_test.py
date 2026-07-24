@@ -64,7 +64,6 @@ def as_user(client, user_id):
         sess["_fresh"] = True
 
 
-# ---- clean slate: remove any leftover qa_t_* test data from prior runs ----
 with app.app_context():
     db.create_all()
     old = User.query.filter(User.username.like("qa_t_%")).all()
@@ -84,8 +83,6 @@ with app.app_context():
         for u in old:
             db.session.delete(u)
         db.session.commit()
-
-# ================= SECTION 1: 회원 관리 =================
 
 c_reg = app.test_client()
 r = c_reg.get("/register")
@@ -139,8 +136,6 @@ record(3, "로그인 실패 횟수 제한 (계정 잠금)",
 record(4, "로그인 오류 메시지 동일성 (계정 존재 여부 유추 방지)",
        msg_nonexistent is not None and msg_nonexistent == msg_wrongpass,
        f"존재하지 않는 아이디 메시지=\"{msg_nonexistent}\" / 틀린 비밀번호 메시지=\"{msg_wrongpass}\" (동일)")
-
-# ================= SECTION 2: 상품 관리 + 검색 =================
 
 seller_id = mkuser("qa_t_seller")
 buyer_id = mkuser("qa_t_buyer")
@@ -226,8 +221,6 @@ blocked_excluded = "QA XSS 테스트 상품" not in blocked_search.data.decode()
 record(24, "차단 상품 검색 결과 제외", blocked_excluded,
        f"차단된 상품명을 그대로 검색해도 결과에 나타나지 않음={blocked_excluded}")
 
-# ================= SECTION 3: 채팅 =================
-
 c_anon = app.test_client()
 sio_anon = socketio.test_client(app, flask_test_client=c_anon)
 anon_connected = sio_anon.is_connected()
@@ -276,9 +269,6 @@ sio_seller.emit("join", {"room": "global"})
 time.sleep(0.05)
 sio_buyer.get_received()
 sio_seller.get_received()
-# seller's socket already sent RATE_MAX_MESSAGES+2 messages in #10's burst
-# test within the last 10s, so it sends here instead of receiving here
-# would still be inside its own rate-limit window - buyer sends instead.
 sio_buyer.emit("send_message", {"room": "global", "content": "안녕하세요 QA 브로드캐스트 테스트"})
 time.sleep(0.1)
 got = sio_seller.get_received()
@@ -289,8 +279,6 @@ broadcast_ok = any(
 record(12, "전체 채팅 정상 송수신(브로드캐스트)", broadcast_ok,
        f"구매자가 보낸 전체채팅 메시지를 판매자 클라이언트가 receive_message로 수신함={broadcast_ok}")
 
-# ================= SECTION 4: 신고/제재 =================
-
 r_report_form = c_buyer.get("/report", query_string={"target_type": "product", "target_id": product_id})
 tok = get_csrf(r_report_form.data.decode())
 r13a = c_buyer.post("/report", data={"csrf_token": tok, "target_type": "product", "target_id": product_id, "reason": "짧음"})
@@ -300,9 +288,6 @@ short_reason_rejected = "5~500자" in r13a.data.decode() or short_reason_no_row
 r13b = c_buyer.post("/report", data={"csrf_token": tok, "target_type": "invalid_type", "target_id": product_id, "reason": "정상적인 신고 사유입니다"})
 with app.app_context():
     bad_type_no_row = Report.query.filter_by(reporter_id=buyer_id, target_type="invalid_type").first() is None
-# report.html only renders form.reason.errors, not form.target_type.errors,
-# so an invalid target_type fails validation silently in the UI - the
-# checklist-relevant fact is that no Report row gets created for it.
 bad_type_rejected = r13b.status_code == 200 and bad_type_no_row
 record(13, "신고 폼 입력 검증 (사유 길이/대상 화이트리스트)", short_reason_rejected and bad_type_rejected,
        f"5자 미만 사유 거부={short_reason_rejected}, target_type 화이트리스트 외 값(invalid_type)은 "
@@ -351,8 +336,6 @@ with app.app_context():
     _apply_threshold("user", suspend_id)
     suspend_status = db.session.get(User, suspend_id).status
 
-# ================= SECTION 5: 송금 =================
-
 r_anon_transfer = app.test_client().get("/transfer", follow_redirects=False)
 record(17, "인증된 사용자만 송금 접근", r_anon_transfer.status_code in (302, 401),
        f"비로그인 상태 GET /transfer -> status={r_anon_transfer.status_code} (로그인 페이지로 리다이렉트)")
@@ -398,15 +381,10 @@ record(21, "상품 구매 원자적 처리 (송금+상태변경)", atomic_ok,
        f"구매 후 product.status={p3_after.status}, Transaction 기록 존재={tx is not None}, "
        f"판매자 잔액 +3000({seller_balance_after:,}), 구매자 잔액 -3000({buyer_balance_after:,}) 모두 한 커밋에 반영됨")
 
-# ================= SECTION 6: 관리자 =================
-
 r_nonadmin = c_buyer.get("/admin/")
 record(25, "관리자 역할 기반 접근 제어", r_nonadmin.status_code == 403,
        f"일반 사용자가 /admin/ 접근 시 status={r_nonadmin.status_code}")
 
-# search for the actual admin credential *values* (from the local, gitignored
-# .env) inside tracked source - not the ADMIN_USERNAME/ADMIN_PASSWORD env var
-# *names*, which legitimately appear in seed_admin.py via os.environ.get(...).
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")) as f:
     env_text = f.read()
 admin_pw_value = None
@@ -427,8 +405,6 @@ with app.app_context():
     audit_admin = AuditLog.query.filter_by(action="admin_dismiss_report").first() is not None
 record(27, "관리자 조치 감사 로그", audit_admin,
        "관리자의 신고 기각 조치가 AuditLog(action=admin_dismiss_report)에 기록됨")
-
-# ================= SECTION 7: 전체 시스템 =================
 
 c_csrf = app.test_client()
 as_user(c_csrf, buyer_id)
@@ -487,7 +463,6 @@ record(33, "Rate Limiting (로그인 엔드포인트)", rate_limited_hit,
        f"/login에 20회 연속 요청(제한: 15 per 5 minutes) "
        f"-> 응답 코드 목록에 429 포함={rate_limited_hit}, 첫 429 발생 시점={codes.index(429)+1 if 429 in codes else 'N/A'}번째 요청")
 
-# ---- cleanup: remove all qa_t_* test data ----
 with app.app_context():
     test_users = User.query.filter(User.username.like("qa_t_%")).all()
     test_ids = [u.id for u in test_users]

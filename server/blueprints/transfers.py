@@ -59,12 +59,6 @@ def purchase(product_id):
 
 
 def _execute_transfer(sender, receiver, amount, kind="transfer", product=None):
-    # Balance check + mutation happen in the same request/transaction and
-    # commit together, so a failure here rolls back cleanly. Note: SQLite's
-    # dev server here is single-threaded, so this isn't exposed to real
-    # concurrent double-spend races; a production deployment on a real RDBMS
-    # would additionally want `SELECT ... FOR UPDATE` (or an equivalent
-    # optimistic version check) around the balance read.
     sender.balance -= amount
     receiver.balance += amount
     db.session.add(

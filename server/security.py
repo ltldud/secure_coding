@@ -2,8 +2,6 @@ import re
 import bcrypt
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
-# At least one letter and one digit, 8-64 chars. Not a full complexity policy,
-# just enough to keep out trivially weak/empty passwords.
 PASSWORD_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,64}$")
 
 
@@ -19,8 +17,6 @@ def verify_password(raw_password: str, password_hash: str) -> bool:
 
 
 def _normalize_answer(raw_answer: str) -> str:
-    # Case/whitespace shouldn't matter for a security-question answer, but
-    # normalize before hashing so the check is consistent either way.
     return raw_answer.strip().lower()
 
 

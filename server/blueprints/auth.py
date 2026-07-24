@@ -46,9 +46,6 @@ def login():
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
 
-        # Same generic error whether the username doesn't exist or the
-        # password is wrong / account locked, so login can't be used to
-        # enumerate valid usernames.
         generic_error = "아이디 또는 비밀번호가 올바르지 않습니다."
 
         if user is None:
@@ -91,9 +88,6 @@ def forgot_password():
         if user is not None and user.has_security_question():
             session["pwreset_user_id"] = user.id
             return redirect(url_for("auth.forgot_password_verify"))
-        # Same generic message whether the account doesn't exist or simply
-        # never set a security question, so this can't be used to probe
-        # which usernames exist.
         flash("아이디 또는 비밀번호 찾기 질문 설정을 확인할 수 없습니다.", "danger")
 
     return render_template("forgot_password.html", form=form)

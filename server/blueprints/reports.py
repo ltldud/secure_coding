@@ -65,9 +65,6 @@ def report():
 
 
 def _apply_threshold(target_type, target_id):
-    # Reports an admin has dismissed as invalid must not keep counting toward
-    # the auto-block/suspend threshold, or a dismissal would be undone by the
-    # very next unrelated report against the same target.
     count = (
         Report.query.filter_by(target_type=target_type, target_id=target_id)
         .filter(Report.status != "dismissed")

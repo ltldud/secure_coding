@@ -28,8 +28,6 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         user = db.session.get(User, user_id)
-        # Suspending a user invalidates their session on their very next
-        # request instead of waiting for the session to expire naturally.
         if user is not None and user.status == "suspended":
             return None
         return user
@@ -40,7 +38,7 @@ def create_app():
     from blueprints.reports import reports_bp
     from blueprints.transfers import transfers_bp
     from blueprints.admin import admin_bp
-    from blueprints.chat import chat_bp  # importing also registers the socketio handlers
+    from blueprints.chat import chat_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(profile_bp)
@@ -101,10 +99,6 @@ app = create_app()
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    # allow_unsafe_werkzeug is fine here because this branch only runs the
-    # local dev/grading server; a real deployment should run behind
-    # gunicorn+eventlet/gevent (or an ASGI server) and a reverse proxy,
-    # never `python app.py` directly.
     socketio.run(
         app,
         host="127.0.0.1",
